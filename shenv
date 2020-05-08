@@ -1,0 +1,116 @@
+#!/bin/bash
+set -eo pipefail
+
+mkdir -p ~/.shenv/bin
+
+function show_usage() {
+	echo -e "Usage: shenv [command] [options]"
+	echo -e ""
+	echo -e "Commands:"
+	echo -e "\tadd\tadd a new command"
+	echo -e "\trm, remove\tremoves a command"
+	echo -e "\tls, list\tlists commands"
+	echo -e ""
+	exit 1
+}
+
+if test "$1" = "add"; then
+	shift
+
+	image=""
+	command=""
+	ports=""
+
+	while test "$#" -gt 0; do
+		case "$1" in
+			-h|--help)
+				show_usage
+				;;
+
+			-p|--port)
+				if test -z "$ports"; then
+					ports="$1"
+				else
+					ports="$ports,$1"
+				fi
+				shift
+				;;
+
+			-i|--image)
+				shift
+				image="$1"
+				shift
+				;;
+
+			-*)
+				echo "error: unknown flag: $1"
+				show_usage
+				;;
+
+			*)
+				if ! test -z "$command"; then
+					echo "error: can only specify one command"
+					show_usage
+					exit 1
+				fi
+
+				command="$1"
+				shift
+				;;
+		esac
+	done
+
+	if test -z "$command"; then
+		echo "error: command is required"
+		show_usage
+	fi
+	if test -z "$image"; then
+		image="${command}:latest"
+	fi
+	if test -e "$HOME/.shenv/bin/$command"; then
+		echo "error: $command already exists"
+		exit 1
+	fi
+
+	echo "# $image" > ~/.shenv/bin/$command
+	echo "docker run --rm -it --net=host -v \"\$PWD:/host\" --workdir /host $image $command \$@" >> ~/.shenv/bin/$command
+	chmod +x ~/.shenv/bin/$command
+elif test "$1" = "remove" || test "$1" = "rm"; then
+	shift
+	command=""
+
+	while test "$#" -gt 0; do
+		case "$1" in
+			-*)
+				echo "error: unknown flag: $1"
+				show_usage
+				;;
+
+			*)
+				if ! test -z "$command"; then
+					echo "error: can only specify one command"
+					show_usage
+					exit 1
+				fi
+
+				command="$1"
+				shift
+				;;
+		esac
+	done
+
+	if ! test -e "$HOME/.shenv/bin/$command"; then
+		echo "error: $command does not exist"
+		exit 1
+	fi
+	rm -f ~/.shenv/bin/$command
+elif test "$1" = "ls" || test "$1" = "list"; then
+	for file in ~/.shenv/bin/*; do
+		echo -e "\t`basename $file` -> `head -n1 $file | cut -d\  -f2`"
+	done
+elif test -z "$1" || test "$1" = "-h" || test "$1" = "--help"; then
+	show_usage
+else
+	echo "error: unknown command: $1"
+	show_usage
+fi
